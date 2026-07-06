@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "SakhTV Quick Word Translator",
+  "version": "0.1.0",
+  "description": "Перевод слов в субтитрах sakh.tv по наведению мыши (en → ru)",
+  "content_scripts": [
+    {
+      "matches": ["https://sakh.tv/watch/*", "https://www.sakh.tv/watch/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage"],
+  "host_permissions": ["https://translate.googleapis.com/*"]
+}

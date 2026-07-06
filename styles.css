@@ -1,0 +1,28 @@
+/* JW Player ставит pointer-events: none на субтитры — мышь проходит сквозь.
+   Без этого переопределения hover не работает вовсе (см. спеку, блокер B1).
+   Побочный эффект: клик по субтитрам больше не ставит видео на паузу. */
+.jw-captions,
+.jw-captions * {
+  pointer-events: auto;
+}
+
+.qwt-word:hover {
+  background: rgba(255, 220, 0, 0.35);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.qwt-tooltip {
+  display: none;
+  position: absolute;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.95);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 18px;
+  line-height: 1.4;
+  white-space: nowrap;
+  z-index: 10000;
+  pointer-events: none; /* тултип не перехватывает мышь — иначе мерцание */
+}
