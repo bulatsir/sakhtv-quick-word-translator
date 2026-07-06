@@ -121,9 +121,30 @@
     return tooltip;
   }
 
+  // Формат перевода: первая строка — основной перевод; дальше строки
+  // "метка\tварианты". Рендер только через createElement/textContent.
+  function renderTooltipContent(tip, text) {
+    tip.textContent = '';
+    String(text).split('\n').forEach((line, i) => {
+      const row = document.createElement('div');
+      if (i === 0) row.className = 'qwt-main';
+      const tabIdx = line.indexOf('\t');
+      if (i > 0 && tabIdx > -1) {
+        const pos = document.createElement('span');
+        pos.className = 'qwt-pos';
+        pos.textContent = line.slice(0, tabIdx);
+        row.appendChild(pos);
+        row.appendChild(document.createTextNode(' ' + line.slice(tabIdx + 1)));
+      } else {
+        row.textContent = line;
+      }
+      tip.appendChild(row);
+    });
+  }
+
   function showTooltip(span, text) {
     const tip = ensureTooltip();
-    tip.textContent = text; // только textContent
+    renderTooltipContent(tip, text);
     tip.style.display = 'block';
     const wordRect = span.getBoundingClientRect();
     const playerRect = playerEl.getBoundingClientRect();
@@ -142,7 +163,7 @@
   // Обновление открытого тултипа, когда перевод пришёл позже hover'а.
   onTranslationsUpdated = (resp) => {
     if (hoveredWord && typeof resp[hoveredWord] === 'string' && resp[hoveredWord]) {
-      if (tooltip) tooltip.textContent = resp[hoveredWord];
+      if (tooltip) renderTooltipContent(tooltip, resp[hoveredWord]);
     }
   };
 

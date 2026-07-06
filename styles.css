@@ -22,9 +22,18 @@
   border-radius: 6px;
   font-size: 18px;
   line-height: 1.4;
-  white-space: pre-line; /* словарные варианты — по строке на часть речи */
   text-align: left;
   max-width: 480px;
   z-index: 10000;
   pointer-events: none; /* тултип не перехватывает мышь — иначе мерцание */
+}
+
+.qwt-tooltip .qwt-main {
+  font-weight: 600; /* основной перевод — заметнее вариантов */
+}
+
+.qwt-tooltip .qwt-pos {
+  opacity: 0.55; /* метка части речи — приглушена, чтобы не спорила с вариантами */
+  font-style: italic;
+  font-size: 0.85em;
 }

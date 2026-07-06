@@ -29,9 +29,9 @@ async function translateWords(words) {
   return result;
 }
 
-// Префикс версии формата кэша: v3 = части речи всегда сокращены (hl=en).
-// Записи старых форматов просто игнорируются.
-const CACHE_PREFIX = 'v3:';
+// Префикс версии формата кэша: v4 = метка части речи отделена табом
+// (content.js стилизует её отдельно). Записи старых форматов игнорируются.
+const CACHE_PREFIX = 'v4:';
 
 async function translateWord(word) {
   if (memCache.has(word)) return memCache.get(word);
@@ -106,7 +106,8 @@ async function pump() {
       const terms = Array.isArray(entry && entry[1]) ? entry[1].slice(0, 4) : [];
       if (!terms.length) continue;
       const abbr = POS_ABBR[entry[0]] || entry[0] || '';
-      lines.push((abbr ? abbr + ' ' : '') + terms.join(', '));
+      // Таб отделяет метку части речи — content.js рисует её приглушённой.
+      lines.push((abbr ? abbr + '\t' : '') + terms.join(', '));
     }
     resolve(lines.length ? lines.join('\n') : null);
   } catch (e) {
