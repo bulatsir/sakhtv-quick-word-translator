@@ -22,7 +22,9 @@
   border-radius: 6px;
   font-size: 18px;
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: pre-line; /* словарные варианты — по строке на часть речи */
+  text-align: left;
+  max-width: 480px;
   z-index: 10000;
   pointer-events: none; /* тултип не перехватывает мышь — иначе мерцание */
 }

@@ -29,13 +29,18 @@ async function translateWords(words) {
   return result;
 }
 
+// Префикс версии формата кэша: v2 = многострочный словарный формат.
+// Старые записи (плоский перевод без вариантов) просто игнорируются.
+const CACHE_PREFIX = 'v2:';
+
 async function translateWord(word) {
   if (memCache.has(word)) return memCache.get(word);
 
-  const stored = await chrome.storage.local.get(word);
-  if (typeof stored[word] === 'string' && stored[word]) {
-    memCache.set(word, stored[word]);
-    return stored[word];
+  const key = CACHE_PREFIX + word;
+  const stored = await chrome.storage.local.get(key);
+  if (typeof stored[key] === 'string' && stored[key]) {
+    memCache.set(word, stored[key]);
+    return stored[key];
   }
 
   if (inFlight.has(word)) return inFlight.get(word);
@@ -46,10 +51,25 @@ async function translateWord(word) {
   const translation = await promise;
   if (translation) { // null/пустое не кэшируем — иначе слово навсегда без перевода
     memCache.set(word, translation);
-    chrome.storage.local.set({ [word]: translation });
+    chrome.storage.local.set({ [key]: translation });
   }
   return translation;
 }
+
+// Сокращения частей речи (dt=bd возвращает английские названия).
+const POS_ABBR = {
+  verb: 'гл.',
+  noun: 'сущ.',
+  adjective: 'прил.',
+  adverb: 'нар.',
+  preposition: 'предл.',
+  pronoun: 'мест.',
+  conjunction: 'союз',
+  interjection: 'межд.',
+  article: 'арт.',
+  numeral: 'числ.',
+  particle: 'част.',
+};
 
 function fetchTranslation(word) {
   return new Promise((resolve) => {
@@ -65,7 +85,7 @@ async function pump() {
   try {
     const url =
       'https://translate.googleapis.com/translate_a/single' +
-      '?client=gtx&sl=en&tl=ru&dt=t&q=' + encodeURIComponent(word);
+      '?client=gtx&sl=en&tl=ru&dt=t&dt=bd&q=' + encodeURIComponent(word);
     const resp = await fetch(url);
     if (!resp.ok) {
       // 429 и прочие ошибки — без ретраев; повторный hover запросит заново
@@ -73,8 +93,20 @@ async function pump() {
       return;
     }
     const data = await resp.json();
-    const t = data && data[0] && data[0][0] && data[0][0][0];
-    resolve(typeof t === 'string' && t ? t : null);
+    const lines = [];
+    // Основной (самый частотный) перевод — первой строкой.
+    const main = data && data[0] && data[0][0] && data[0][0][0];
+    if (typeof main === 'string' && main) lines.push(main);
+    // Словарные варианты по частям речи (data[1] от dt=bd) —
+    // чтобы при многозначном слове было из чего выбрать по контексту.
+    const dict = Array.isArray(data && data[1]) ? data[1] : [];
+    for (const entry of dict.slice(0, 3)) {
+      const terms = Array.isArray(entry && entry[1]) ? entry[1].slice(0, 4) : [];
+      if (!terms.length) continue;
+      const abbr = POS_ABBR[entry[0]] || entry[0] || '';
+      lines.push((abbr ? abbr + ' ' : '') + terms.join(', '));
+    }
+    resolve(lines.length ? lines.join('\n') : null);
   } catch (e) {
     resolve(null);
   } finally {

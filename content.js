@@ -82,6 +82,9 @@
   const observer = new MutationObserver(() => {
     try {
       processCues();
+      // Плеер удалил реплику, пока курсор был на слове: mouseout в этом
+      // случае не приходит, и тултип «залипает» — прячем его сами.
+      if (hoveredSpan && !hoveredSpan.isConnected) hideTooltip();
     } catch (e) {
       log(e);
     }
@@ -103,6 +106,7 @@
   let tooltip = null;
   let playerEl = null;
   let hoveredWord = null; // нормализованное слово под курсором (или null)
+  let hoveredSpan = null; // span под курсором — для проверки, что он ещё в DOM
 
   function ensureTooltip() {
     // Тултип живёт ВНУТРИ контейнера плеера — иначе невидим в fullscreen.
@@ -131,6 +135,7 @@
 
   function hideTooltip() {
     hoveredWord = null;
+    hoveredSpan = null;
     if (tooltip) tooltip.style.display = 'none';
   }
 
@@ -148,6 +153,7 @@
       if (!span || !span.dataset.qwtWord) return;
       const word = span.dataset.qwtWord;
       hoveredWord = word;
+      hoveredSpan = span;
       showTooltip(span, translations.get(word) || '…');
       if (!translations.has(word)) prefetch([word]); // промах кэша — одиночный запрос
     } catch (err) {
