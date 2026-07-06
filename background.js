@@ -29,9 +29,9 @@ async function translateWords(words) {
   return result;
 }
 
-// Префикс версии формата кэша: v2 = многострочный словарный формат.
-// Старые записи (плоский перевод без вариантов) просто игнорируются.
-const CACHE_PREFIX = 'v2:';
+// Префикс версии формата кэша: v3 = части речи всегда сокращены (hl=en).
+// Записи старых форматов просто игнорируются.
+const CACHE_PREFIX = 'v3:';
 
 async function translateWord(word) {
   if (memCache.has(word)) return memCache.get(word);
@@ -85,7 +85,9 @@ async function pump() {
   try {
     const url =
       'https://translate.googleapis.com/translate_a/single' +
-      '?client=gtx&sl=en&tl=ru&dt=t&dt=bd&q=' + encodeURIComponent(word);
+      // hl=en фиксирует язык метаданных ответа: иначе названия частей речи
+      // приходят на языке браузера (Accept-Language) и не сокращаются.
+      '?client=gtx&sl=en&tl=ru&hl=en&dt=t&dt=bd&q=' + encodeURIComponent(word);
     const resp = await fetch(url);
     if (!resp.ok) {
       // 429 и прочие ошибки — без ретраев; повторный hover запросит заново
