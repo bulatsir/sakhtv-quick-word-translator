@@ -6,11 +6,17 @@
   const translations = new Map(); // нормализованное слово -> перевод (только строки)
 
   // --- адаптер сайта: селекторы реплики и контейнера плеера ---
+  // mirror: у Netflix родной слой субтитров зажат под интерфейсом плеера
+  // (предок с will-change: opacity создаёт stacking context, а поверх лежит
+  // watch-video--back-container с pointer-events: auto) — мышь до слов не
+  // долетает. Поэтому родные субтитры прячутся (styles.css), а поверх
+  // рисуется наша копия, которая и ловит hover.
   const SITE = location.hostname.endsWith('netflix.com')
     ? {
         cueSelector: '.player-timedtext-text-container',
         playerSelector: '.watch-video',
         captionsRoot: '.player-timedtext',
+        mirror: true,
       }
     : {
         cueSelector: '.jw-captions .jw-text-track-cue',
@@ -104,12 +110,49 @@
     });
   }
 
+  // --- зеркало субтитров (Netflix) ---
+  let mirror = null;
+
+  function ensureMirror() {
+    const player = document.querySelector(SITE.playerSelector);
+    if (!player) return null;
+    if (!mirror || !player.contains(mirror)) {
+      if (mirror) mirror.remove();
+      mirror = document.createElement('div');
+      mirror.className = 'qwt-subs';
+      player.appendChild(mirror);
+    }
+    return mirror;
+  }
+
+  function syncMirror() {
+    const containers = document.querySelectorAll(SITE.cueSelector);
+    const text = [...containers].map((c) => c.textContent).join('\n');
+    const m = ensureMirror();
+    if (!m || m.dataset.qwtText === text) return; // без изменений — выходим,
+    m.dataset.qwtText = text;                     // иначе observer зациклится
+    m.textContent = '';
+    if (!text.trim()) return;
+    for (const c of containers) {
+      const line = document.createElement('div');
+      line.className = 'qwt-line';
+      line.textContent = c.textContent;
+      m.appendChild(line);
+      wrapCue(line);
+    }
+  }
+
+  function handleCues() {
+    if (SITE.mirror) syncMirror();
+    else processCues();
+  }
+
   // --- наблюдение: один observer на body (стабильный предок) ---
   // Плеер может пересоздать .jw-captions при смене озвучки/эпизода —
   // observer на body переживает это.
   const observer = new MutationObserver(() => {
     try {
-      processCues();
+      handleCues();
       // Плеер удалил реплику, пока курсор был на слове: mouseout в этом
       // случае не приходит, и тултип «залипает» — прячем его сами.
       if (hoveredSpan && !hoveredSpan.isConnected) hideTooltip();
@@ -218,6 +261,6 @@
     }
   });
 
-  processCues(); // на случай, если субтитры уже на экране
+  handleCues(); // на случай, если субтитры уже на экране
   log('content script ready');
 })();
