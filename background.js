@@ -29,9 +29,29 @@ async function translateWords(words) {
   return result;
 }
 
-// Префикс версии формата кэша: v4 = метка части речи отделена табом
-// (content.js стилизует её отдельно). Записи старых форматов игнорируются.
-const CACHE_PREFIX = 'v4:';
+// Префикс версии формата кэша: v5 = добавлена строка «→ лемма» для
+// слов-двойников. Записи старых форматов игнорируются.
+const CACHE_PREFIX = 'v5:';
+
+// Формы неправильных глаголов, совпадающие с другим словом: для них Google
+// показывает статью «двойника» («left» → «левый») и теряет глагол.
+// Дописываем в тултип глагольную статью начальной формы.
+const HOMOGRAPH_LEMMA = {
+  left: 'leave',
+  saw: 'see',
+  rose: 'rise',
+  broke: 'break',
+  found: 'find',
+  ground: 'grind',
+  bore: 'bear',
+  wound: 'wind',
+  bound: 'bind',
+  bit: 'bite',
+  shot: 'shoot',
+  lit: 'light',
+  fell: 'fall',
+  lay: 'lie',
+};
 
 async function translateWord(word) {
   if (memCache.has(word)) return memCache.get(word);
@@ -45,13 +65,34 @@ async function translateWord(word) {
 
   if (inFlight.has(word)) return inFlight.get(word);
 
-  const promise = fetchTranslation(word).finally(() => inFlight.delete(word));
+  const promise = buildEntry(word).finally(() => inFlight.delete(word));
   inFlight.set(word, promise);
 
   const translation = await promise;
   if (translation) { // null/пустое не кэшируем — иначе слово навсегда без перевода
     memCache.set(word, translation);
     chrome.storage.local.set({ [key]: translation });
+  }
+  return translation;
+}
+
+// Статья слова + для двойников строка «→ лемма: глагольные значения».
+async function buildEntry(word) {
+  let translation = await fetchTranslation(word);
+
+  const lemma = HOMOGRAPH_LEMMA[word];
+  if (lemma) {
+    // Лемма переводится обычным путём и оседает в кэше как своё слово.
+    const lemmaEntry = await translateWord(lemma);
+    if (lemmaEntry) {
+      const lines = lemmaEntry.split('\n');
+      const verbLine = lines.find((l) => l.startsWith('гл.\t'));
+      const terms = verbLine ? verbLine.slice(verbLine.indexOf('\t') + 1) : lines[0];
+      if (terms) {
+        translation = (translation ? translation + '\n' : '') +
+          '→ ' + lemma + '\t' + terms;
+      }
+    }
   }
   return translation;
 }
