@@ -5,6 +5,19 @@
   const log = (...a) => console.log('[QWT]', ...a);
   const translations = new Map(); // нормализованное слово -> перевод (только строки)
 
+  // --- адаптер сайта: селекторы реплики и контейнера плеера ---
+  const SITE = location.hostname.endsWith('netflix.com')
+    ? {
+        cueSelector: '.player-timedtext-text-container',
+        playerSelector: '.watch-video',
+        captionsRoot: '.player-timedtext',
+      }
+    : {
+        cueSelector: '.jw-captions .jw-text-track-cue',
+        playerSelector: '.jwplayer',
+        captionsRoot: '.jw-captions',
+      };
+
   // --- нормализация слова для перевода и ключа кэша ---
   // "Ran!" -> "ran"; don't/re-read сохраняют внутренние знаки; ’ -> '
   function normalize(raw) {
@@ -36,14 +49,29 @@
     }
   }
 
+  // Есть ли в реплике ещё не обёрнутый текст. Netflix может менять текст
+  // в том же контейнере, поэтому одноразовой пометки недостаточно —
+  // проверяем содержимое. Обёрнутые узлы не считаются, поэтому наши
+  // собственные мутации не зацикливают observer.
+  function needsWrap(cue) {
+    const walker = document.createTreeWalker(cue, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const n = walker.currentNode;
+      if (n.textContent.trim() && !n.parentElement.closest('.qwt-word')) return true;
+    }
+    return false;
+  }
+
   // --- оборачивание слов одной реплики ---
   function wrapCue(cue) {
-    if (cue.dataset.qwtDone) return;
-    cue.dataset.qwtDone = '1'; // помечаем ДО мутаций — защита от зацикливания
-
     const walker = document.createTreeWalker(cue, NodeFilter.SHOW_TEXT);
     const textNodes = [];
-    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    while (walker.nextNode()) {
+      // уже обёрнутое не трогаем
+      if (!walker.currentNode.parentElement.closest('.qwt-word')) {
+        textNodes.push(walker.currentNode);
+      }
+    }
 
     const words = new Set();
     for (const node of textNodes) {
@@ -71,9 +99,9 @@
   }
 
   function processCues() {
-    document
-      .querySelectorAll('.jw-captions .jw-text-track-cue:not([data-qwt-done])')
-      .forEach(wrapCue);
+    document.querySelectorAll(SITE.cueSelector).forEach((cue) => {
+      if (needsWrap(cue)) wrapCue(cue);
+    });
   }
 
   // --- наблюдение: один observer на body (стабильный предок) ---
@@ -97,7 +125,7 @@
 
   // Диагностика медленного старта (поиск при этом продолжается).
   setTimeout(() => {
-    if (!document.querySelector('.jw-captions')) {
+    if (!document.querySelector(SITE.captionsRoot)) {
       log('captions container not found (yet)');
     }
   }, 60000);
@@ -110,7 +138,7 @@
 
   function ensureTooltip() {
     // Тултип живёт ВНУТРИ контейнера плеера — иначе невидим в fullscreen.
-    const player = document.querySelector('.jwplayer') || document.body;
+    const player = document.querySelector(SITE.playerSelector) || document.body;
     if (!tooltip || playerEl !== player || !player.contains(tooltip)) {
       if (tooltip) tooltip.remove();
       playerEl = player;
