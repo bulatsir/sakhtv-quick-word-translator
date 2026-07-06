@@ -33,10 +33,36 @@ async function translateWords(words) {
 // слов-двойников. Записи старых форматов игнорируются.
 const CACHE_PREFIX = 'v5:';
 
+// Одноразовая уборка записей старых форматов кэша (v1:..v4:).
+chrome.storage.local.get(null).then((all) => {
+  const stale = Object.keys(all).filter(
+    (k) => /^v\d+:/.test(k) && !k.startsWith(CACHE_PREFIX)
+  );
+  if (stale.length) chrome.storage.local.remove(stale);
+}).catch(() => {});
+
+// Неудавшиеся переводы (офлайн/429) не переспрашиваем FAIL_TTL_MS,
+// чтобы активное наведение не бомбило Google во время бана.
+const failedAt = new Map(); // слово -> время неудачи
+const FAIL_TTL_MS = 30000;
+
+function recentlyFailed(word) {
+  const t = failedAt.get(word);
+  if (!t) return false;
+  if (Date.now() - t > FAIL_TTL_MS) {
+    failedAt.delete(word);
+    return false;
+  }
+  return true;
+}
+
 // Формы неправильных глаголов, совпадающие с другим словом: для них Google
 // показывает статью «двойника» («left» → «левый») и теряет глагол.
 // Дописываем в тултип глагольную статью начальной формы.
-const HOMOGRAPH_LEMMA = {
+// Object.create(null): слова приходят из субтитров, обычный {} отдал бы
+// унаследованные свойства для слов вроде "constructor".
+// Инвариант: значения не должны сами быть ключами таблицы (иначе рекурсия).
+const HOMOGRAPH_LEMMA = Object.assign(Object.create(null), {
   left: 'leave',
   saw: 'see',
   rose: 'rise',
@@ -51,11 +77,20 @@ const HOMOGRAPH_LEMMA = {
   lit: 'light',
   fell: 'fall',
   lay: 'lie',
-};
+});
 
 async function translateWord(word) {
   if (memCache.has(word)) return memCache.get(word);
+  // Бронируем inFlight синхронно, ДО первого await: иначе предперевод
+  // реплики и hover на то же слово успевают оба пройти проверку и сделать
+  // два HTTP-запроса.
+  if (inFlight.has(word)) return inFlight.get(word);
+  const promise = resolveWord(word).finally(() => inFlight.delete(word));
+  inFlight.set(word, promise);
+  return promise;
+}
 
+async function resolveWord(word) {
   const key = CACHE_PREFIX + word;
   const stored = await chrome.storage.local.get(key);
   if (typeof stored[key] === 'string' && stored[key]) {
@@ -63,15 +98,14 @@ async function translateWord(word) {
     return stored[key];
   }
 
-  if (inFlight.has(word)) return inFlight.get(word);
+  if (recentlyFailed(word)) return null;
 
-  const promise = buildEntry(word).finally(() => inFlight.delete(word));
-  inFlight.set(word, promise);
-
-  const translation = await promise;
+  const translation = await buildEntry(word);
   if (translation) { // null/пустое не кэшируем — иначе слово навсегда без перевода
     memCache.set(word, translation);
-    chrome.storage.local.set({ [key]: translation });
+    chrome.storage.local.set({ [key]: translation }).catch(() => {});
+  } else {
+    failedAt.set(word, Date.now());
   }
   return translation;
 }
@@ -81,7 +115,9 @@ async function buildEntry(word) {
   let translation = await fetchTranslation(word);
 
   const lemma = HOMOGRAPH_LEMMA[word];
-  if (lemma) {
+  // Проверка `lemma in HOMOGRAPH_LEMMA` — страховка от рекурсии, если при
+  // будущем редактировании таблицы значение совпадёт с чьим-то ключом.
+  if (lemma && !(lemma in HOMOGRAPH_LEMMA)) {
     // Лемма переводится обычным путём и оседает в кэше как своё слово.
     const lemmaEntry = await translateWord(lemma);
     if (lemmaEntry) {
@@ -98,7 +134,8 @@ async function buildEntry(word) {
 }
 
 // Сокращения частей речи (dt=bd возвращает английские названия).
-const POS_ABBR = {
+// Object.create(null) — по той же причине, что и HOMOGRAPH_LEMMA.
+const POS_ABBR = Object.assign(Object.create(null), {
   verb: 'гл.',
   noun: 'сущ.',
   adjective: 'прил.',
@@ -110,7 +147,7 @@ const POS_ABBR = {
   article: 'арт.',
   numeral: 'числ.',
   particle: 'част.',
-};
+});
 
 function fetchTranslation(word) {
   return new Promise((resolve) => {

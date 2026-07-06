@@ -1,0 +1,28 @@
+/* Только Netflix. */
+
+/* Родные субтитры прячем: их накрывает интерфейс плеера (stacking context
+   от will-change: opacity + watch-video--back-container ловит мышь),
+   и курсор до них не долетает. Вместо них поверх рисуется зеркало .qwt-subs. */
+.player-timedtext {
+  opacity: 0 !important;
+}
+
+.qwt-subs {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 10%;
+  text-align: center;
+  z-index: 99999; /* выше watch-video--back-container и контролов */
+  pointer-events: none; /* сам слой прозрачен для мыши... */
+  color: #fff;
+  font-size: clamp(18px, 2.6vw, 44px);
+  line-height: 1.35;
+  font-weight: 500;
+  white-space: pre-line; /* \n внутри строки (бывший <br>) — перенос */
+  text-shadow: #000 0 0 7px, #000 0 0 3px, #000 1px 1px 2px;
+}
+
+.qwt-subs .qwt-word {
+  pointer-events: auto; /* ...а слова — ловят hover */
+}

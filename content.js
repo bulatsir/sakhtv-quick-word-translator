@@ -125,18 +125,31 @@
     return mirror;
   }
 
+  // Текст контейнера с сохранением переносов: textContent «съедает» <br>,
+  // и двухстрочная реплика склеилась бы в одно слово без пробела.
+  function cueTextWithBreaks(el) {
+    let out = '';
+    el.childNodes.forEach((n) => {
+      if (n.nodeType === Node.TEXT_NODE) out += n.textContent;
+      else if (n.nodeName === 'BR') out += '\n';
+      else out += cueTextWithBreaks(n);
+    });
+    return out;
+  }
+
   function syncMirror() {
     const containers = document.querySelectorAll(SITE.cueSelector);
-    const text = [...containers].map((c) => c.textContent).join('\n');
+    const lines = [...containers].map(cueTextWithBreaks);
+    const text = lines.join('\n');
     const m = ensureMirror();
     if (!m || m.dataset.qwtText === text) return; // без изменений — выходим,
     m.dataset.qwtText = text;                     // иначе observer зациклится
     m.textContent = '';
     if (!text.trim()) return;
-    for (const c of containers) {
+    for (const lineText of lines) {
       const line = document.createElement('div');
       line.className = 'qwt-line';
-      line.textContent = c.textContent;
+      line.textContent = lineText; // \n отрисует white-space: pre-line
       m.appendChild(line);
       wrapCue(line);
     }
